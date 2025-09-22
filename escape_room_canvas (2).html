@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escape Room EF - Canvas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .fade-in {
+      animation: fadeIn 0.4s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .ia-response {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+      max-height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+
+  <div id="app" class="w-full max-w-4xl"></div>
+
+  <script>
+    const app = document.getElementById('app');
+
+    let totalTime = 60 * 60;
+    let timeLeft = totalTime;
+    let paused = false;
+    let showingBox = null;
+    let showingIA = false;
+    let iaAnswer = '';
+
+    const iaKnowledge = {
+      "alimentacio": "Els cinc grups d'aliments són: cereals, verdures i hortalisses, fruites, làctics, proteïnes i greixos saludables.",
+      "hidratacio": "És recomanable beure aproximadament 6-8 gots d'aigua al dia; l'aigua ajuda a regular la temperatura i a transportar nutrients.",
+      "descans": "Els nens de 9-10 anys necessiten aproximadament 9-11 hores de son cada nit per recuperar-se i créixer.",
+      "activitat fisica": "Es recomana fer almenys 60 minuts d'activitat física moderada a vigorosa cada dia.",
+      "higiene corporal": "Rentar-se les mans freqüentment i dutxar-se després d'esport ajuda a prevenir malalties i mantenir el cos net."
+    };
+
+    const boxData = [
+      { title: "Caixa 1: Alimentació", questions: ["Quins són els 5 grups d'aliments principals?","Quina és la importància d'esmorzar?","Digues un exemple d'un àpat saludable."], challenge: "Repte: En cercle, inventeu un ball curt sobre menjar saludable!" },
+      { title: "Caixa 2: Hidratació", questions: ["Quants gots d'aigua es recomana beure al dia?","Per què és important hidratar-se quan fem esport?","Quina beguda és la millor per hidratar-se?"], challenge: "Repte: Correu tots junts fins a un punt i torneu sense parar, i després beveu aigua." },
+      { title: "Caixa 3: Descans", questions: ["Quantes hores de son necessita un nen/a de 9-10 anys?","Per què és important anar a dormir a la mateixa hora?","Com ajuda el descans al nostre cos?"], challenge: "Repte: Feu 1 minut de respiració profunda junts, asseguts en cercle." },
+      { title: "Caixa 4: Activitat Física", questions: ["Quants minuts d'activitat física es recomanen cada dia?","Per què és important escalfar abans de fer esport?","Digues un esport que es pugui practicar en equip."], challenge: "Repte: Creeu una petita coreografia de salts i gireu tots junts!" },
+      { title: "Caixa 5: Higiene Corporal", questions: ["Per què és important rentar-se les mans?","Cada quan ens hem de dutxar després d'esport?","Què passa si no ens rentem les dents?"], challenge: "Repte: Feu una dramatització curta sobre rentar-se les mans." }
+    ];
+
+    function normalize(str) {
+      return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    function generateAnswer(question) {
+      const qNorm = normalize(question);
+      for (const key in iaKnowledge) {
+        if (qNorm.includes(key.replace(/ /g,''))) {
+          return iaKnowledge[key];
+        }
+      }
+      return 'Potser buscant pel pati trobes la resposta a la teva pregunta...';
+    }
+
+    function render() {
+      const percent = Math.round((timeLeft / totalTime) * 100);
+
+      if (showingIA) {
+        app.innerHTML = `
+          <div class="fade-in bg-white shadow-lg rounded-2xl p-6 max-w-lg mx-auto">
+            <h2 class="text-2xl font-bold mb-4">Comodí de la IA</h2>
+            <p class="mb-4 text-sm">Pots escriure una pregunta per a la IA. <strong>Això et restarà 5 minuts del temps total!</strong></p>
+            <textarea id="ia-question" class="w-full border rounded p-2 mb-2" rows="3" placeholder="Escriu la teva pregunta..."></textarea>
+            <div class="flex justify-between mb-2">
+              <button onclick="askIA()" class="bg-purple-600 text-white px-4 py-2 rounded-xl shadow hover:bg-purple-700">Enviar</button>
+              <button onclick="closeIA()" class="bg-gray-500 text-white px-4 py-2 rounded-xl shadow hover:bg-gray-600">Tancar</button>
+            </div>
+            <div class="ia-response">${iaAnswer}</div>
+          </div>
+        `;
+        return;
+      }
+
+      if (showingBox !== null) {
+        const b = boxData[showingBox];
+        app.innerHTML = `
+          <div class="fade-in bg-white shadow-lg rounded-2xl p-6 max-w-lg mx-auto">
+            <h2 class="text-2xl font-bold mb-4">${b.title}</h2>
+            <ul class="list-disc list-inside mb-4 text-left">
+              ${b.questions.map(q=>`<li>${q}</li>`).join('')}
+            </ul>
+            <p class="font-semibold mb-4">${b.challenge}</p>
+            <input type="file" id="photo-upload" class="mb-4" accept="image/*">
+            <div class="flex justify-between mb-4">
+              <button onclick="submitProof()" class="bg-blue-500 text-white px-4 py-2 rounded-xl shadow hover:bg-blue-600">Enviar prova</button>
+              <button onclick="closeBox()" class="bg-gray-500 text-white px-4 py-2 rounded-xl shadow hover:bg-gray-600">➡️</button>
+            </div>
+            <button onclick="openIA()" class="w-full bg-purple-500 text-white px-4 py-2 rounded-xl shadow hover:bg-purple-600">Comodí de la IA</button>
+          </div>
+        `;
+        return;
+      }
+
+      app.innerHTML = `
+        <div class="fade-in bg-white shadow-lg rounded-2xl px-6 py-4 mb-6 text-center">
+          <h2 class="text-xl font-bold">Temps restant</h2>
+          <div class="w-full bg-gray-300 rounded-full h-4 mb-2">
+            <div class="h-4 rounded-full transition-all duration-500 ${percent<=30 ? 'bg-red-500' : percent<=60 ? 'bg-yellow-400' : 'bg-green-500'}" style="width:${percent}%;"></div>
+          </div>
+          <button onclick="togglePause()" class="bg-gray-800 text-white px-4 py-1 rounded-xl">${paused ? 'Continua' : 'Pausa'}</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          ${boxData.map((b,i)=>`
+            <div class="fade-in bg-white shadow-lg rounded-2xl p-4 text-center cursor-pointer hover:bg-blue-50" onclick="openBox(${i})">
+              <h2 class="text-xl font-bold">${b.title}</h2>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function togglePause() { paused = !paused; render(); }
+    function openBox(index) { showingBox = index; render(); }
+    function closeBox() { showingBox = null; render(); }
+    function openIA() { timeLeft = Math.max(0, timeLeft - (5 * 60)); iaAnswer = ''; showingIA = true; render(); }
+    function closeIA() { showingIA = false; render(); }
+    function askIA() {
+      const question = document.getElementById('ia-question').value.trim();
+      if (!question) { alert("Escriu una pregunta abans d'enviar!"); return; }
+      iaAnswer = generateAnswer(question);
+      render();
+    }
+
+    function submitProof() {
+      const fileInput = document.getElementById('photo-upload');
+      if (fileInput && fileInput.files.length > 0) { alert("Prova enviada! Bona feina!"); closeBox(); }
+      else { alert("Si us plau, pugeu una foto abans d'enviar."); }
+    }
+
+    function tick() {
+      if (!paused && !showingIA && showingBox === null) {
+        if (timeLeft > 0) timeLeft--;
+        else {
+          app.innerHTML = `<div class='fade-in bg-white p-6 rounded-2xl text-center'><h2 class='text-3xl font-bold text-red-600 mb-4'>⏰ Temps esgotat!</h2><p class='text-lg'>L'escape room ha acabat.</p><button onclick='location.reload()' class='mt-4 bg-green-500 text-white px-4 py-2 rounded-xl shadow hover:bg-green-600'>Tornar a començar</button></div>`;
+          clearInterval(timerInterval);
+          return;
+        }
+      }
+      const percent = Math.round((timeLeft / totalTime) * 100);
+      const bar = document.querySelector('.w-full .h-4');
+      if (bar) bar.style.width = percent + '%';
+    }
+
+    const timerInterval = setInterval(tick, 1000);
+    render();
+  </script>
+</body>
+</html>
